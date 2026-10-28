@@ -1,0 +1,22 @@
+[project]
+name = "episodeflow"
+version = "1.0.0"
+description = "Offline multilingual episode file batch-renaming desktop application"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+keywords = ["video", "episodes", "batch-rename", "windows", "pyside6"]
+authors = [{ name = "Cuma Duran" }]
+
+[project.urls]
+Developer = "https://github.com/cumaduran"
+Source = "https://github.com/cumaduran/video-bulk-renaming"
+Issues = "https://github.com/cumaduran/video-bulk-renaming/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120

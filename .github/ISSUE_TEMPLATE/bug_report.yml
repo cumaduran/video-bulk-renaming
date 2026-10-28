@@ -1,0 +1,31 @@
+name: Bug report
+description: Report an incorrect rename or UI issue
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove usernames, personal paths, and video content. Include only anonymized **filenames**.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include the expected and actual proposed filenames.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: EpisodeFlow version
+      placeholder: v1.0.0
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux (source)
+        - Other
+    validations:
+      required: true

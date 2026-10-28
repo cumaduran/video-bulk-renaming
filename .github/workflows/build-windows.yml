@@ -1,0 +1,114 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional release version (e.g. v1.0.0). Empty = build only.'
+        required: false
+        type: string
+  push:
+    branches: [main, master]
+    tags: ['v*']
+
+# The standard GITHUB_TOKEN is enough to publish Release assets.
+# No personal access token should be saved in repository secrets or source.
+permissions:
+  contents: write
+
+concurrency:
+  group: episodeflow-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Run safety tests
+        run: |
+          python -m pip install pytest
+          python -m pytest -q
+      - name: Build standalone Windows application
+        shell: pwsh
+        run: .\scripts\build_windows.ps1
+      - name: Smoke test bundled EXE
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath '.\dist\EpisodeFlow.exe' -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Windows EXE self-test failed with exit code $($process.ExitCode)"
+          }
+      - name: Bundle downloads and write SHA-256 checksums
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'dist/EpisodeFlow.exe', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md' -DestinationPath 'dist/EpisodeFlow-Windows.zip' -Force
+          $files = @('EpisodeFlow.exe', 'EpisodeFlow-Windows.zip')
+          $sums = foreach ($filename in $files) {
+            $hash = (Get-FileHash -Path "dist/$filename" -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $filename"
+          }
+          [System.IO.File]::WriteAllLines((Join-Path (Resolve-Path dist) 'SHA256SUMS.txt'), [string[]]$sums)
+      - name: Upload Windows downloads as build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: EpisodeFlow-Windows-${{ github.run_number }}
+          path: |
+            dist/EpisodeFlow.exe
+            dist/EpisodeFlow-Windows.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Resolve optional release tag
+        id: release
+        shell: pwsh
+        env:
+          MANUAL_TAG: ${{ inputs.release_tag }}
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $tag = $env:GITHUB_REF_NAME
+          } else {
+            $tag = $env:MANUAL_TAG
+          }
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            'publish=false' >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          if ($tag -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$') {
+            throw 'Release tag must look like v1.0.0 or v1.1.0-beta.1.'
+          }
+          if ($env:GITHUB_REF_TYPE -ne 'tag' -and $env:GITHUB_REF_NAME -ne 'main') {
+            throw 'Manual releases must be built from the main branch.'
+          }
+          'publish=true' >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+      - name: Prevent accidental replacement of an existing release
+        if: steps.release.outputs.publish == 'true' && github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh release view "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release $env:RELEASE_TAG already exists. Choose a new version."
+          }
+      - name: Publish downloadable GitHub Release
+        if: steps.release.outputs.publish == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: EpisodeFlow ${{ steps.release.outputs.tag }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/EpisodeFlow.exe
+            dist/EpisodeFlow-Windows.zip
+            dist/SHA256SUMS.txt
