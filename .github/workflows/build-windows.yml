@@ -101,7 +101,7 @@ jobs:
           }
       - name: Publish downloadable GitHub Release
         if: steps.release.outputs.publish == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release.outputs.tag }}
           target_commitish: ${{ github.sha }}
